@@ -2,7 +2,7 @@
 
 > **Bitcoin-Transaktionen aus mempool.space abrufen & als CSV exportieren**
 
-Eine browserbasierte Single-Page-Application (keine Installation, keine Abhängigkeiten), die Bitcoin-Transaktions-IDs einliest, die Details über die [mempool.space](https://mempool.space) API abruft und strukturierte CSV-Dateien für die Buchführung, Steuererklärung oder Compliance exportiert.
+Eine browserbasierte Single-Page-Application (keine Installation, keine Abhängigkeiten), die Bitcoin-Transaktions-IDs einliest, die Details über die [mempool.space](https://mempool.space) API abruft und strukturierte CSV-Dateien exportiert die sich für Mittelherkunftsnachweise oder die Rückverfolgung von Transaktionen eignen.
 
 ---
 
