@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transaction Collector</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .app-header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid #1e3a5f;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .app-header svg { flex-shrink: 0; }
+    .app-header h1 { font-size: 1.4rem; font-weight: 700; color: #f8fafc; }
+    .app-header p { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title span.dot {
+      width: 8px; height: 8px;
+      background: #3b82f6;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed #334155;
+      border-radius: 10px;
+      padding: 36px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.06);
+    }
+    .drop-zone.has-file {
+      border-color: #22c55e;
+      background: rgba(34, 197, 94, 0.06);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone-icon { font-size: 2rem; margin-bottom: 10px; }
+    .drop-zone-label { font-size: 0.9rem; color: #94a3b8; }
+    .drop-zone-label strong { color: #93c5fd; }
+    .drop-zone-filename {
+      margin-top: 10px; font-size: 0.85rem; color: #22c55e; font-weight: 600;
+    }
+
+    /* Options grid */
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) { .options-grid { grid-template-columns: 1fr; } }
+
+    .opt-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      gap: 12px;
+    }
+    .opt-label { font-size: 0.85rem; color: #cbd5e1; }
+    .opt-label small { display: block; font-size: 0.75rem; color: #64748b; margin-top: 1px; }
+
+    /* Toggle switch */
+    .toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #334155; border-radius: 24px;
+      transition: 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; bottom: 3px;
+      background: #94a3b8;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: #2563eb; }
+    .toggle input:checked + .toggle-slider::before {
+      background: white;
+      transform: translateX(20px);
+    }
+    .toggle input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
+
+    /* Inputs */
+    .opt-input {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 4px 8px;
+      font-size: 0.85rem;
+      width: 100%;
+      outline: none;
+    }
+    .opt-input:focus { border-color: #3b82f6; }
+    select.opt-input { cursor: pointer; }
+
+    .full-width { grid-column: 1 / -1; }
+    .opt-row.full-width { flex-direction: column; align-items: stretch; gap: 6px; }
+    .opt-row.full-width .opt-label { margin-bottom: 4px; }
+
+    /* Mutually exclusive highlight */
+    .excl-group { border-color: #1e3a5f; }
+
+    /* Run button */
+    .run-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .run-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1d4ed8, #1e40af);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    }
+    .run-btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Progress */
+    .progress-bar-wrap {
+      background: #0f172a;
+      border-radius: 8px;
+      height: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #38bdf8);
+      border-radius: 8px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .progress-label { font-size: 0.82rem; color: #94a3b8; text-align: center; }
+
+    /* Log panel */
+    .log-panel {
+      background: #0a0f1e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      height: 220px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      padding: 10px;
+    }
+    .log-entry { padding: 1px 0; }
+    .log-info    { color: #94a3b8; }
+    .log-success { color: #22c55e; }
+    .log-warning { color: #f59e0b; }
+    .log-error   { color: #f87171; }
+    .log-debug   { color: #6366f1; }
+
+    /* Download section */
+    .download-area {
+      text-align: center;
+      padding: 20px;
+    }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #059669, #047857);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin: 6px;
+    }
+    .download-btn:hover {
+      background: linear-gradient(135deg, #047857, #065f46);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
+    }
+    .download-btn.secondary {
+      background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    }
+    .download-btn.secondary:hover {
+      background: linear-gradient(135deg, #6d28d9, #5b21b6);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    }
+    .download-info { font-size: 0.82rem; color: #64748b; margin-top: 10px; }
+
+    .hidden { display: none !important; }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+      background: #1e3a5f;
+      color: #60a5fa;
+    }
+
+    .alert {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      color: #fca5a5;
+      margin-bottom: 16px;
+    }
+    .alert-warn {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+    }
+    .spin {
+      display: inline-block;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .stat-chip {
+      background: #0f172a;
+      border: 1px solid #1e3a5f;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .stat-chip strong { color: #e2e8f0; }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect width="36" height="36" rx="8" fill="#1e3a5f"/>
+    <path d="M18 7l2.5 5 5.5.8-4 3.9.9 5.5L18 19.5l-4.9 2.7.9-5.5-4-3.9 5.5-.8z" fill="#f59e0b" stroke="#f59e0b" stroke-width="1" stroke-linejoin="round"/>
+    <rect x="10" y="24" width="16" height="2" rx="1" fill="#3b82f6"/>
+    <rect x="13" y="28" width="10" height="2" rx="1" fill="#3b82f6" opacity="0.6"/>
+  </svg>
+  <div>
+    <h1>Transaction Collector Web</h1>
+    <p>Bitcoin-Transaktionen aus mempool.space abrufen &amp; als CSV exportieren</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span> Eingabedatei</div>
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".txt,.csv,text/plain">
+      <div class="drop-zone-icon">📄</div>
+      <div class="drop-zone-label">
+        <strong>Datei auswählen</strong> oder hierher ziehen<br>
+        <span style="color:#64748b;font-size:0.8rem;">transaktions.txt — eine TX-ID (64 Hex-Zeichen) pro Zeile, Zeilen mit # werden ignoriert</span>
+      </div>
+      <div class="drop-zone-filename hidden" id="file-name"></div>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span> Optionen</div>
+    <div class="options-grid">
+
+      <!-- API URL -->
+      <div class="opt-row full-width">
+        <div class="opt-label">API-Basis-URL<small>--mempool-base</small></div>
+        <input type="text" class="opt-input" id="opt-mempool-base" value="https://mempool.space/api">
+      </div>
+
+      <!-- Timeout -->
+      <div class="opt-row">
+        <div class="opt-label">Timeout (Sek.)<small>--timeout</small></div>
+        <input type="number" class="opt-input" id="opt-timeout" value="20" min="1" max="120" style="width:80px;">
+      </div>
+
+      <!-- Output mode -->
+      <div class="opt-row">
+        <div class="opt-label">Ausgabemodus<small>--output-mode</small></div>
+        <select class="opt-input" id="opt-output-mode" style="width:auto;">
+          <option value="split">Split (je TX-ID eine CSV)</option>
+          <option value="combined">Combined (eine CSV)</option>
+        </select>
+      </div>
+
+      <!-- Decimal sep -->
+      <div class="opt-row">
+        <div class="opt-label">Dezimaltrennzeichen<small>--decimal-sep</small></div>
+        <select class="opt-input" id="opt-decimal-sep" style="width:auto;">
+          <option value=",">, (Komma, Excel DE)</option>
+          <option value=".">. (Punkt, international)</option>
+        </select>
+      </div>
+
+      <!-- Digits -->
+      <div class="opt-row excl-group">
+        <div class="opt-label">Führende Nullen<small>--digits (0 = keine)</small></div>
+        <input type="number" class="opt-input" id="opt-digits" value="0" min="0" max="10" style="width:70px;">
+      </div>
+
+      <!-- Auto digits -->
+      <div class="opt-row excl-group">
+        <div class="opt-label">Auto Nullen<small>--auto-digits (überschreibt Digits)</small></div>
+        <label class="toggle">
+          <input type="checkbox" id="opt-auto-digits">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- Debug -->
+      <div class="opt-row">
+        <div class="opt-label">Debug-Logging<small>--debug</small></div>
+        <label class="toggle">
+          <input type="checkbox" id="opt-debug">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Run -->
+  <button class="run-btn" id="run-btn" disabled>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    Verarbeiten
+  </button>
+
+  <!-- Progress -->
+  <div class="card hidden" id="progress-section">
+    <div class="card-title"><span class="dot"></span> Fortschritt <span class="badge" id="progress-badge">0/0</span></div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+    <div class="progress-label" id="progress-label">Initialisiere…</div>
+    <div class="stats-row" id="stats-row"></div>
+  </div>
+
+  <!-- Log -->
+  <div class="card hidden" id="log-section">
+    <div class="card-title" style="justify-content:space-between;">
+      <span><span class="dot"></span> Log-Ausgabe</span>
+      <button onclick="document.getElementById('log-panel').innerHTML=''" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.8rem;">Leeren</button>
+    </div>
+    <div class="log-panel" id="log-panel"></div>
+  </div>
+
+  <!-- Download -->
+  <div class="card hidden" id="download-section">
+    <div class="card-title"><span class="dot"></span> Download</div>
+    <div class="download-area" id="download-area"></div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// CORE LOGIC (ported from transaction_collector.py)
+// ============================================================
+
+const MEMPOOL_TX_URL  = 'https://mempool.space/tx/';
+const MEMPOOL_ADDR_URL = 'https://mempool.space/address/';
+
+const CSV_FIELDS = [
+  'event_number','event','event_date_time_utc','event_date_time_mez',
+  'transaction_id','transaction_explorer_url','transaction_explorer_url_link',
+  'transaction_fee_btc','address_index','address_type','address',
+  'address_value_btc','address_owner','address_explorer_url',
+  'address_explorer_url_link','blockheight','blockhash','exchange_name',
+  'exchange_type','wallet_account_number','wallet_account_name',
+  'derivation_path','wallet_account_extended_public_key_1',
+  'master_fingerprint_1','wallet_account_extended_public_key_2',
+  'master_fingerprint_2','exchange_rate_btc_euro','exchange_fee_btc',
+  'exchange_fee_euro','amount_btc','amount_euro','description_owner',
+  'description_authority','document_1','document_2','document_3',
+  'document_4','document_5','document_6','document_7','document_8',
+  'document_9','document_10','document_11','document_12',
+];
+
+// ---- SHA256 via SubtleCrypto ----
+async function sha256(data) {
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return new Uint8Array(buf);
+}
+
+// ---- Hex helpers ----
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2)
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  return bytes;
+}
+function bytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ---- Base58Check ----
+const B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+async function b58decode_check(s) {
+  let num = 0n;
+  for (const ch of s) {
+    const idx = B58_ALPHABET.indexOf(ch);
+    if (idx === -1) throw new Error(`Invalid Base58 character: ${ch}`);
+    num = num * 58n + BigInt(idx);
+  }
+  const full = new Uint8Array(25);
+  let tmp = num;
+  for (let i = 24; i >= 0; i--) {
+    full[i] = Number(tmp & 0xffn);
+    tmp >>= 8n;
+  }
+  const data = full.slice(0, 21);
+  const checksum = full.slice(21, 25);
+  const h1 = await sha256(data);
+  const h2 = await sha256(h1);
+  for (let i = 0; i < 4; i++) {
+    if (h2[i] !== checksum[i]) throw new Error('Base58Check checksum invalid');
+  }
+  return data;
+}
+
+// ---- Bech32 ----
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+const BECH32_GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+function bech32_polymod(values) {
+  let chk = 1;
+  for (const v of values) {
+    const b = (chk >> 25) & 0xff;
+    chk = (chk & 0x1ffffff) << 5 ^ v;
+    for (let i = 0; i < 5; i++) {
+      if ((b >> i) & 1) chk ^= BECH32_GEN[i];
+    }
+  }
+  return chk;
+}
+
+function bech32_hrp_expand(hrp) {
+  const r = [];
+  for (const c of hrp) r.push(c.charCodeAt(0) >> 5);
+  r.push(0);
+  for (const c of hrp) r.push(c.charCodeAt(0) & 31);
+  return r;
+}
+
+function bech32_decode(addr) {
+  addr = addr.trim();
+  if (addr.toLowerCase() !== addr && addr.toUpperCase() !== addr)
+    throw new Error('Bech32: mixed case');
+  addr = addr.toLowerCase();
+  const pos = addr.lastIndexOf('1');
+  if (pos < 1) throw new Error("Bech32: missing '1' separator");
+  const hrp = addr.slice(0, pos);
+  const dataStr = addr.slice(pos + 1);
+  const decoded = [...dataStr].map(c => BECH32_CHARSET.indexOf(c));
+  if (decoded.some(x => x === -1)) throw new Error('Bech32: invalid character');
+  if (bech32_polymod([...bech32_hrp_expand(hrp), ...decoded]) !== 1)
+    throw new Error('Bech32: invalid checksum');
+  return { hrp, data: decoded.slice(0, -6) };
+}
+
+function convertbits(data, frombits, tobits, pad = true) {
+  let acc = 0, bits = 0;
+  const ret = [], maxv = (1 << tobits) - 1;
+  for (const value of data) {
+    if (value < 0 || value >> frombits) return null;
+    acc = (acc << frombits) | value;
+    bits += frombits;
+    while (bits >= tobits) { bits -= tobits; ret.push((acc >> bits) & maxv); }
+  }
+  if (pad) { if (bits) ret.push((acc << (tobits - bits)) & maxv); }
+  else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) return null;
+  return ret;
+}
+
+async function address_to_scriptpubkey(addr) {
+  // P2PKH
+  if (/^[1mn]/.test(addr)) {
+    const payload = await b58decode_check(addr);
+    if (payload[0] !== 0x00 && payload[0] !== 0x6f)
+      throw new Error(`Unexpected P2PKH version byte: 0x${payload[0].toString(16)}`);
+    const h160 = payload.slice(1, 21);
+    return new Uint8Array([0x76, 0xa9, 0x14, ...h160, 0x88, 0xac]);
+  }
+  // P2SH
+  if (/^[32]/.test(addr)) {
+    const payload = await b58decode_check(addr);
+    if (payload[0] !== 0x05 && payload[0] !== 0xc4)
+      throw new Error(`Unexpected P2SH version byte: 0x${payload[0].toString(16)}`);
+    const h160 = payload.slice(1, 21);
+    return new Uint8Array([0xa9, 0x14, ...h160, 0x87]);
+  }
+  // Bech32
+  const { hrp, data } = bech32_decode(addr);
+  if (!['bc', 'tb', 'bcrt'].includes(hrp)) throw new Error(`Unknown Bech32 HRP: ${hrp}`);
+  if (data.length < 1) throw new Error('Bech32 too short');
+  const witver = data[0];
+  const bits = convertbits(data.slice(1), 5, 8, false);
+  if (!bits) throw new Error('Invalid Bech32 witness data');
+  const prog = new Uint8Array(bits);
+  if (witver === 0 && prog.length !== 20 && prog.length !== 32)
+    throw new Error('Invalid v0 program length');
+  const op = witver === 0 ? 0x00 : 0x50 + witver;
+  return new Uint8Array([op, prog.length, ...prog]);
+}
+
+async function scripthash_from_address(addr) {
+  const spk = await address_to_scriptpubkey(addr);
+  const hash = await sha256(spk);
+  return bytesToHex(hash.slice().reverse()); // little-endian
+}
+
+// ---- BTC value helpers ----
+function sats_to_btc(sats) {
+  if (sats == null) return '0.00000000';
+  const n = BigInt(Math.round(Number(sats)));
+  const sign = n < 0n ? '-' : '';
+  const abs = n < 0n ? -n : n;
+  const intPart = String(abs / 100000000n);
+  const decPart = String(abs % 100000000n).padStart(8, '0');
+  return `${sign}${intPart}.${decPart}`;
+}
+
+function btc_fmt(valStr, decimalSep = ',') {
+  if (valStr == null || valStr === '') return '';
+  return decimalSep === ',' ? valStr.replace('.', ',') : valStr;
+}
+
+// ---- Time helpers ----
+function unix_to_iso_utc(ts) {
+  if (!ts) return '';
+  return new Date(Number(ts) * 1000).toISOString();
+}
+
+function unix_to_mez_excel(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(Number(ts) * 1000).toLocaleString('de-DE', {
+      timeZone: 'Europe/Berlin',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).replace(/(\d{2})\.(\d{2})\.(\d{4}),\s*/, '$3-$2-$1 ');
+  } catch {
+    return new Date(Number(ts) * 1000).toLocaleString();
+  }
+}
+
+async function header_hex_to_hash_and_time(headerHex) {
+  try {
+    const raw = hexToBytes(headerHex);
+    if (raw.length < 80) return {};
+    const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+    const ntime = view.getUint32(68, true);
+    const h1 = await sha256(raw);
+    const h2 = await sha256(h1);
+    const hash = bytesToHex(h2.reverse());
+    return { hash, ntime };
+  } catch { return {}; }
+}
+
+// ---- Mempool Client ----
+class MempoolClient {
+  constructor({ baseUrl = 'https://mempool.space/api', timeout = 20000, retries = 1 } = {}) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.timeout = timeout;
+    this.retries = Math.max(0, retries);
+    this._lastRequestTime = 0;
+    this.minRequestInterval = 250;
+  }
+
+  async _get(path) {
+    const url = `${this.baseUrl}${path}`;
+    const elapsed = Date.now() - this._lastRequestTime;
+    if (elapsed < this.minRequestInterval) await sleep(this.minRequestInterval - elapsed);
+
+    let lastErr;
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      try {
+        this._lastRequestTime = Date.now();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), this.timeout);
+        const resp = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json, text/plain, */*' },
+        });
+        clearTimeout(timer);
+        if (resp.status === 404) return null;
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+        try { return JSON.parse(text); } catch { return text; }
+      } catch (e) {
+        lastErr = e;
+        if (attempt < this.retries) {
+          const wait = Math.min(500 * Math.pow(2, attempt), 30000);
+          await sleep(wait);
+        }
+      }
+    }
+    throw new Error(`Connection error (${url}): ${lastErr?.message}`);
+  }
+
+  async get_tx(txid) { return this._get(`/tx/${txid}`); }
+
+  async block_header(height) {
+    const hash = await this._get(`/block-height/${height}`);
+    if (!hash || typeof hash !== 'string') throw new Error('Could not get block hash');
+    const header = await this._get(`/block/${hash}/header`);
+    if (!header || typeof header !== 'string') throw new Error('Could not get block header');
+    return header;
+  }
+
+  async scripthash_history(scripthash) {
+    const lst = await this._get(`/scripthash/${scripthash}/txs`) || [];
+    return lst.map(tx => ({
+      tx_hash: tx.txid,
+      height: tx.status?.confirmed ? (Number(tx.status.block_height) || 0) : 0,
+    }));
+  }
+
+  async scripthash_utxos(scripthash) {
+    return await this._get(`/scripthash/${scripthash}/utxo`) || [];
+  }
+}
+
+// ---- Transaction helpers ----
+function extract_address_from_vout(vout) {
+  if (vout.scriptpubkey_address) return vout.scriptpubkey_address;
+  const spk = vout.scriptPubKey || {};
+  const addrs = spk.addresses || [];
+  if (Array.isArray(addrs) && addrs.length > 0) return addrs[0];
+  return spk.address || '';
+}
+
+async function find_height_via_history(client, tx, txid, debugFn) {
+  for (const [idx, vout] of (tx.vout || []).entries()) {
+    const addr = extract_address_from_vout(vout);
+    if (!addr) continue;
+    try {
+      const sh = await scripthash_from_address(addr);
+      debugFn && debugFn(`Suche Höhe via History (Output ${idx}, scripthash ${sh.slice(0,16)}...)`);
+      const hist = await client.scripthash_history(sh) || [];
+      for (const h of hist) {
+        if (h.tx_hash === txid && h.height > 0) {
+          debugFn && debugFn(`Blockhöhe via History gefunden: ${h.height}`);
+          return h.height;
+        }
+      }
+    } catch (e) {
+      debugFn && debugFn(`History-Fallback-Fehler (Output ${idx}): ${e.message}`);
+    }
+  }
+  return null;
+}
+
+async function fetch_tx_full(client, txid, debugFn) {
+  const tx = await client.get_tx(txid);
+  if (!tx || typeof tx !== 'object') throw new Error(`TX not found or invalid: ${txid}`);
+
+  let fee_sats = tx.fee ?? null;
+  let blockheight = tx.blockheight || tx.height || null;
+  let blockhash = tx.blockhash || '';
+  let blocktime = tx.blocktime || tx.time || null;
+
+  // Esplora status block
+  const status = tx.status || {};
+  if (status.confirmed && !blockheight) blockheight = status.block_height;
+  if (status.block_hash && !blockhash) blockhash = status.block_hash;
+  if (status.block_time && !blocktime) blocktime = status.block_time;
+
+  // Height via script history fallback
+  if (!blockheight && tx.vout) {
+    const bh = await find_height_via_history(client, tx, txid, debugFn);
+    if (bh) blockheight = bh;
+  }
+
+  // Supplement hash/time from block header
+  if (blockheight && (!blockhash || !blocktime)) {
+    try {
+      const headerHex = await client.block_header(Number(blockheight));
+      const { hash, ntime } = await header_hex_to_hash_and_time(headerHex);
+      if (!blockhash && hash) blockhash = hash;
+      if (!blocktime && ntime) blocktime = ntime;
+    } catch (e) {
+      debugFn && debugFn(`Header-Nachladung fehlgeschlagen: ${e.message}`);
+    }
+  }
+
+  return {
+    tx,
+    blockheight: blockheight ? Number(blockheight) : null,
+    blockhash: blockhash || '',
+    blocktime: blocktime ? Number(blocktime) : null,
+    fee_sats,
+  };
+}
+
+async function compute_fee_if_needed(client, tx, fee_sats, debugFn) {
+  if (fee_sats !== null && fee_sats !== undefined) return fee_sats;
+  if ((tx.vin || []).some(vin => 'coinbase' in vin)) return null;
+  try {
+    let vout_sats = 0;
+    for (const vout of tx.vout || []) {
+      vout_sats += typeof vout.value === 'number' && Number.isInteger(vout.value)
+        ? vout.value
+        : Math.round(parseFloat(vout.value || 0) * 1e8);
+    }
+    let vin_sats = 0;
+    for (const vin of tx.vin || []) {
+      const prevout = vin.prevout || {};
+      if ('value' in prevout) { vin_sats += Number(prevout.value); continue; }
+      const { tx: prev } = await fetch_tx_full(client, vin.txid, debugFn);
+      const po = (prev.vout || [])[vin.vout || 0] || {};
+      vin_sats += typeof po.value === 'number' && Number.isInteger(po.value)
+        ? po.value
+        : Math.round(parseFloat(po.value || 0) * 1e8);
+    }
+    return Math.max(vin_sats - vout_sats, 0);
+  } catch (e) {
+    debugFn && debugFn(`Gebührenberechnung fehlgeschlagen: ${e.message}`);
+    return null;
+  }
+}
+
+function make_row(overrides = {}) {
+  const row = {};
+  for (const f of CSV_FIELDS) row[f] = '';
+  return Object.assign(row, overrides);
+}
+
+async function build_rows_for_csv(client, txid, tx, blockheight, blockhash, blocktime, fee_sats, decimalSep, debugFn, logFn) {
+  const rows = [];
+  const tx_explorer = MEMPOOL_TX_URL + txid;
+  const tx_iso_utc = unix_to_iso_utc(blocktime);
+  const tx_mez = unix_to_mez_excel(blocktime);
+  const fee_btc_str = fee_sats !== null && fee_sats !== undefined ? sats_to_btc(fee_sats) : null;
+  const fee_btc_fmt = fee_btc_str !== null ? btc_fmt(fee_btc_str, decimalSep) : '';
+
+  const baseRow = {
+    event: 'transaction',
+    event_date_time_utc: tx_iso_utc,
+    event_date_time_mez: tx_mez,
+    transaction_id: txid,
+    transaction_explorer_url: tx_explorer,
+    transaction_fee_btc: fee_btc_fmt,
+    blockheight: blockheight ?? '',
+    blockhash: blockhash || '',
+  };
+
+  // INPUTS
+  for (const [i, vin] of (tx.vin || []).entries()) {
+    if ('coinbase' in vin) {
+      rows.push(make_row({ ...baseRow, address_index: i, address_type: 'input' }));
+      continue;
+    }
+    let addr = '', value_btc = '';
+    const prevout = vin.prevout || {};
+    if (Object.keys(prevout).length > 0) {
+      addr = prevout.scriptpubkey_address || '';
+      if (prevout.value !== undefined) {
+        value_btc = btc_fmt(sats_to_btc(prevout.value), decimalSep);
+      }
+    } else if (vin.txid) {
+      try {
+        const { tx: prev } = await fetch_tx_full(client, vin.txid, debugFn);
+        const po = (prev.vout || [])[vin.vout || 0] || {};
+        addr = extract_address_from_vout(po);
+        const v = typeof po.value === 'number' && Number.isInteger(po.value)
+          ? po.value : Math.round(parseFloat(po.value || 0) * 1e8);
+        value_btc = btc_fmt(sats_to_btc(v), decimalSep);
+      } catch (e) {
+        logFn && logFn('warning', `Vorgänger-TX konnte nicht geladen werden (${vin.txid}): ${e.message}`);
+      }
+    }
+
+    if (debugFn && addr) {
+      try {
+        const sh = await scripthash_from_address(addr);
+        debugFn(`Scripthash (INPUT ${i}): ${sh}`);
+        const hist = await client.scripthash_history(sh);
+        debugFn(`TX-Anzahl (INPUT ${i}, ${addr.slice(0,10)}…): ${hist.length}`);
+      } catch (e) { debugFn(`Scripthash-Fehler (INPUT ${i}): ${e.message}`); }
+    }
+
+    rows.push(make_row({
+      ...baseRow,
+      address_index: i,
+      address_type: 'input',
+      address: addr,
+      address_value_btc: value_btc,
+      address_explorer_url: addr ? MEMPOOL_ADDR_URL + addr : '',
+    }));
+  }
+
+  // OUTPUTS
+  for (const [i, vout] of (tx.vout || []).entries()) {
+    const addr = extract_address_from_vout(vout);
+    const v = typeof vout.value === 'number' && Number.isInteger(vout.value)
+      ? vout.value : Math.round(parseFloat(vout.value || 0) * 1e8);
+    const value_btc = btc_fmt(sats_to_btc(v), decimalSep);
+
+    if (debugFn && addr) {
+      try {
+        const sh = await scripthash_from_address(addr);
+        debugFn(`Scripthash (OUTPUT ${i}): ${sh}`);
+        const hist = await client.scripthash_history(sh);
+        debugFn(`TX-Anzahl (OUTPUT ${i}, ${addr.slice(0,10)}…): ${hist.length}`);
+      } catch (e) { debugFn(`Scripthash-Fehler (OUTPUT ${i}): ${e.message}`); }
+    }
+
+    rows.push(make_row({
+      ...baseRow,
+      address_index: i,
+      address_type: 'output',
+      address: addr,
+      address_value_btc: value_btc,
+      address_explorer_url: addr ? MEMPOOL_ADDR_URL + addr : '',
+    }));
+  }
+
+  return rows;
+}
+
+// ---- CSV generation ----
+function rows_to_csv(rows) {
+  const escapeField = v => {
+    const s = String(v ?? '');
+    if (s.includes(';') || s.includes('"') || s.includes('\n') || s.includes('\r'))
+      return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const lines = [CSV_FIELDS.join(';')];
+  for (const row of rows)
+    lines.push(CSV_FIELDS.map(f => escapeField(row[f])).join(';'));
+  return lines.join('\r\n');
+}
+
+// ---- Utilities ----
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function parseTxids(text) {
+  const TXID_RE = /^[0-9a-fA-F]{64}$/;
+  const seen = new Set();
+  const result = [];
+  for (const raw of text.split('\n')) {
+    const txid = raw.trim();
+    if (!txid || txid.startsWith('#')) continue;
+    if (!TXID_RE.test(txid)) {
+      uiLog('warning', `Ungültige TX-ID übersprungen: ${txid}`);
+      continue;
+    }
+    if (seen.has(txid)) { uiLog('warning', `Duplikat übersprungen: ${txid}`); continue; }
+    seen.add(txid);
+    result.push(txid);
+  }
+  return result;
+}
+
+// ---- Download helpers ----
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
+}
+
+function downloadText(text, filename) {
+  // UTF-8 BOM für bessere Excel-Kompatibilität
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+  const csvBytes = new TextEncoder().encode(text);
+  const combined = new Uint8Array(bom.length + csvBytes.length);
+  combined.set(bom);
+  combined.set(csvBytes, bom.length);
+  downloadBlob(new Blob([combined], { type: 'text/csv;charset=utf-8;' }), filename);
+}
+
+// ============================================================
+// UI LOGIC
+// ============================================================
+
+let uploadedText = null;
+let isRunning = false;
+let resultData = null; // { type: 'single'|'zip', ... }
+
+function uiLog(level, msg) {
+  const panel = document.getElementById('log-panel');
+  if (!panel) return;
+  const entry = document.createElement('div');
+  entry.className = `log-entry log-${level}`;
+  const time = new Date().toTimeString().slice(0, 8);
+  entry.textContent = `[${time}] ${msg}`;
+  panel.appendChild(entry);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function updateProgress(done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-badge').textContent = `${done}/${total}`;
+  document.getElementById('progress-label').textContent = `${done} von ${total} Transaktionen verarbeitet (${pct}%)`;
+}
+
+// File upload
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileNameEl = document.getElementById('file-name');
+const runBtn = document.getElementById('run-btn');
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    uploadedText = e.target.result;
+    fileNameEl.textContent = `✓ ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    fileNameEl.classList.remove('hidden');
+    dropZone.classList.add('has-file');
+    runBtn.disabled = false;
+    uiLog('success', `Datei geladen: ${file.name}`);
+    document.getElementById('log-section').classList.remove('hidden');
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// Run button
+runBtn.addEventListener('click', async () => {
+  if (isRunning || !uploadedText) return;
+  isRunning = true;
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spin">⟳</span> Verarbeite…';
+
+  // Show sections
+  document.getElementById('progress-section').classList.remove('hidden');
+  document.getElementById('log-section').classList.remove('hidden');
+  document.getElementById('download-section').classList.add('hidden');
+  document.getElementById('log-panel').innerHTML = '';
+  resultData = null;
+
+  const opts = getOptions();
+  uiLog('info', `Starte mit ${opts.outputMode === 'split' ? 'Split' : 'Combined'}-Modus, API: ${opts.mempoolBase}`);
+
+  const txids = parseTxids(uploadedText);
+  if (txids.length === 0) {
+    uiLog('warning', 'Keine gültigen TX-IDs gefunden.');
+    resetRunBtn();
+    return;
+  }
+  uiLog('success', `${txids.length} TX-ID(s) gefunden.`);
+
+  let width = 0;
+  if (opts.digits > 0 && !opts.autoDigits) width = opts.digits;
+  else if (opts.autoDigits) width = Math.max(1, String(txids.length).length);
+
+  const client = new MempoolClient({
+    baseUrl: opts.mempoolBase,
+    timeout: opts.timeout * 1000,
+    retries: 1,
+  });
+
+  const allRows = [];
+  const splitFiles = [];
+  let errors = 0, success = 0;
+  updateProgress(0, txids.length);
+
+  const debugFn = opts.debug ? (msg => uiLog('debug', msg)) : null;
+
+  for (let i = 0; i < txids.length; i++) {
+    const txid = txids[i];
+    const idxStr = width > 0 ? String(i + 1).padStart(width, '0') : String(i + 1);
+    const csvName = `${idxStr}_${txid.slice(0, 16)}.csv`;
+
+    uiLog('info', `[${i + 1}/${txids.length}] Verarbeite TX: ${txid}`);
+    updateProgress(i, txids.length);
+
+    try {
+      const { tx, blockheight, blockhash, blocktime, fee_sats: rawFee } =
+        await fetch_tx_full(client, txid, debugFn);
+      const fee_sats = await compute_fee_if_needed(client, tx, rawFee, debugFn);
+      const rows = await build_rows_for_csv(
+        client, txid, tx, blockheight, blockhash, blocktime, fee_sats,
+        opts.decimalSep, debugFn,
+        (lvl, msg) => uiLog(lvl, msg),
+      );
+
+      if (opts.outputMode === 'split') {
+        splitFiles.push({ name: csvName, content: rows_to_csv(rows) });
+        uiLog('success', `CSV erstellt: ${csvName} (${rows.length} Zeilen)`);
+      } else {
+        allRows.push(...rows);
+        uiLog('success', `TX ${txid.slice(0, 16)}… gesammelt (${rows.length} Zeilen)`);
+      }
+      success++;
+    } catch (e) {
+      errors++;
+      uiLog('error', `Fehler bei TX ${txid}: ${e.message}`);
+    }
+  }
+
+  updateProgress(txids.length, txids.length);
+
+  // Stats
+  const statsRow = document.getElementById('stats-row');
+  statsRow.innerHTML = `
+    <div class="stat-chip">✓ Erfolgreich: <strong>${success}</strong></div>
+    <div class="stat-chip">✗ Fehler: <strong>${errors}</strong></div>
+    <div class="stat-chip">Zeilen gesamt: <strong>${opts.outputMode === 'combined' ? allRows.length : splitFiles.reduce((a, f) => a + f.content.trimEnd().split('\n').length - 1, 0)}</strong></div>
+  `;
+
+  // Prepare download
+  await prepareDownload(opts, splitFiles, allRows);
+  resetRunBtn();
+  isRunning = false;
+});
+
+async function prepareDownload(opts, splitFiles, allRows) {
+  const area = document.getElementById('download-area');
+  const section = document.getElementById('download-section');
+  area.innerHTML = '';
+  section.classList.remove('hidden');
+
+  function addInfo(text) {
+    const d = document.createElement('div');
+    d.className = 'download-info';
+    d.textContent = text;
+    area.appendChild(d);
+  }
+
+  if (opts.outputMode === 'combined') {
+    if (allRows.length === 0) {
+      addInfo('Keine Daten zum Herunterladen.');
+      return;
+    }
+    const csvContent = rows_to_csv(allRows);
+    const btn = document.createElement('button');
+    btn.className = 'download-btn';
+    btn.innerHTML = '⬇ combined.csv herunterladen';
+    btn.onclick = () => downloadText(csvContent, 'combined.csv');
+    area.appendChild(btn);
+    addInfo(`${allRows.length} Zeilen · ${(new Blob([csvContent]).size / 1024).toFixed(1)} KB`);
+  } else {
+    if (splitFiles.length === 0) {
+      addInfo('Keine Dateien generiert.');
+      return;
+    }
+    if (splitFiles.length === 1) {
+      const f = splitFiles[0];
+      const btn = document.createElement('button');
+      btn.className = 'download-btn';
+      btn.innerHTML = `⬇ ${f.name} herunterladen`;
+      btn.onclick = () => downloadText(f.content, f.name);
+      area.appendChild(btn);
+    } else {
+      // ZIP download
+      const zipBtn = document.createElement('button');
+      zipBtn.className = 'download-btn';
+      zipBtn.innerHTML = `⬇ ZIP herunterladen (${splitFiles.length} Dateien)`;
+      zipBtn.onclick = async () => {
+        zipBtn.disabled = true;
+        zipBtn.innerHTML = '<span class="spin">⟳</span> Erstelle ZIP…';
+        try {
+          const blob = buildZipManual(splitFiles);
+          downloadBlob(blob, 'transactions.zip');
+          zipBtn.innerHTML = '✓ ZIP heruntergeladen';
+        } catch (e) {
+          zipBtn.innerHTML = '✗ Fehler beim ZIP';
+          uiLog('error', `ZIP-Fehler: ${e.message}`);
+        }
+        zipBtn.disabled = false;
+      };
+      area.appendChild(zipBtn);
+
+      // Individual CSV downloads (sequenziell per Klick)
+      const indBtn = document.createElement('button');
+      indBtn.className = 'download-btn secondary';
+      indBtn.innerHTML = `⬇ Einzelne CSVs (${splitFiles.length} Dateien)`;
+      let dlIdx = 0;
+      indBtn.onclick = () => {
+        if (dlIdx >= splitFiles.length) { dlIdx = 0; indBtn.innerHTML = `⬇ Einzelne CSVs (${splitFiles.length} Dateien)`; return; }
+        const f = splitFiles[dlIdx++];
+        downloadText(f.content, f.name);
+        if (dlIdx < splitFiles.length)
+          indBtn.innerHTML = `⬇ Nächste: ${splitFiles[dlIdx].name} (${dlIdx + 1}/${splitFiles.length})`;
+        else
+          indBtn.innerHTML = '✓ Alle heruntergeladen – nochmal klicken zum Zurücksetzen';
+      };
+      area.appendChild(indBtn);
+      addInfo(`${splitFiles.length} CSV-Dateien`);
+    }
+  }
+}
+
+// Manual ZIP builder (STORE compression, no dependencies)
+function buildZipManual(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralDir = [];
+  let offset = 0;
+
+  function u16le(n) {
+    const b = new Uint8Array(2);
+    new DataView(b.buffer).setUint16(0, n, true);
+    return b;
+  }
+  function u32le(n) {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0, n, true);
+    return b;
+  }
+  function crc32(data) {
+    let crc = 0xffffffff;
+    const table = crc32.table || (crc32.table = (() => {
+      const t = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        t[i] = c;
+      }
+      return t;
+    })());
+    for (let i = 0; i < data.length; i++)
+      crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  for (const { name, content } of files) {
+    const nameBytes = encoder.encode(name);
+    const data = encoder.encode(content);
+    const crc = crc32(data);
+
+    // Local file header
+    const lfh = new Uint8Array([
+      0x50, 0x4b, 0x03, 0x04,    // signature
+      ...u16le(20),              // version needed
+      ...u16le(0),               // flags
+      ...u16le(0),               // compression STORE
+      ...u16le(0), ...u16le(0),  // mod time, mod date
+      ...u32le(crc),
+      ...u32le(data.length),     // compressed size
+      ...u32le(data.length),     // uncompressed size
+      ...u16le(nameBytes.length),
+      ...u16le(0),               // extra field length
+      ...nameBytes,
+    ]);
+    parts.push(lfh);
+    parts.push(data);
+
+    // Central directory entry
+    centralDir.push({ nameBytes, crc, size: data.length, offset });
+    offset += lfh.length + data.length;
+  }
+
+  // Central directory records
+  const cdParts = [];
+  for (const { nameBytes, crc, size, offset: off } of centralDir) {
+    cdParts.push(new Uint8Array([
+      0x50, 0x4b, 0x01, 0x02,   // signature
+      ...u16le(20), ...u16le(20), // version made by, needed
+      ...u16le(0),               // flags
+      ...u16le(0),               // compression STORE
+      ...u16le(0), ...u16le(0),  // mod time, date
+      ...u32le(crc),
+      ...u32le(size), ...u32le(size),
+      ...u16le(nameBytes.length),
+      ...u16le(0), ...u16le(0),  // extra, comment
+      ...u16le(0), ...u16le(0),  // disk start, int attr
+      ...u32le(0),               // ext attr
+      ...u32le(off),
+      ...nameBytes,
+    ]));
+  }
+
+  const cdData = concat(cdParts);
+  const cdSize = cdData.length;
+  const totalFiles = centralDir.length;
+
+  // End of central directory
+  const eocd = new Uint8Array([
+    0x50, 0x4b, 0x05, 0x06,
+    ...u16le(0), ...u16le(0),
+    ...u16le(totalFiles), ...u16le(totalFiles),
+    ...u32le(cdSize),
+    ...u32le(offset),
+    ...u16le(0),
+  ]);
+
+  const all = concat([...parts, cdData, eocd]);
+  return new Blob([all], { type: 'application/zip' });
+}
+
+function concat(arrays) {
+  let total = 0;
+  for (const a of arrays) total += a.length;
+  const out = new Uint8Array(total);
+  let i = 0;
+  for (const a of arrays) { out.set(a, i); i += a.length; }
+  return out;
+}
+
+function getOptions() {
+  return {
+    mempoolBase: document.getElementById('opt-mempool-base').value.trim() || 'https://mempool.space/api',
+    timeout: parseFloat(document.getElementById('opt-timeout').value) || 20,
+    outputMode: document.getElementById('opt-output-mode').value,
+    decimalSep: document.getElementById('opt-decimal-sep').value,
+    digits: parseInt(document.getElementById('opt-digits').value) || 0,
+    autoDigits: document.getElementById('opt-auto-digits').checked,
+    debug: document.getElementById('opt-debug').checked,
+  };
+}
+
+function resetRunBtn() {
+  isRunning = false;
+  runBtn.disabled = uploadedText === null;
+  runBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Erneut verarbeiten';
+}
+
+// Disable digits when auto-digits is on
+document.getElementById('opt-auto-digits').addEventListener('change', e => {
+  document.getElementById('opt-digits').disabled = e.target.checked;
+});
+</script>
+</body>
+</html>
